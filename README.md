@@ -1,6 +1,7 @@
 # SLP Ranked Script
-Scan a Slippi replays folder, detect which games were ranked, and copy only
-the ranked games into date-organized folders (Ranked/YYYY-MM-DD/).
+Scan a Slippi replays folder, and copy only
+the ranked games into date-organized folders (Ranked/YYYY-MM-DD/). Can also
+group the ranked games into their respective sets.
 
 # Installation
 
@@ -18,10 +19,15 @@ Copy the constants.example.js into a new `constants.js` file, and update the fol
 # Usage
 
 `$ node index.js`                 Scan ONLY the current month's folder (YYYY-mm)
+
 `$ node index.js --all`           Scan every month folder under SOURCE_DIR
+
 `$ node index.js 2026-04 2026-05` Scan specific month folder(s)
+
 `$ node index.js 2026-05-11`      Scan/group a specific day (YYYY-MM-DD)
+
 `$ node index.js --dry-run`       Report what would be copied without copying
+
 `$ node index.js --sets`          Copy as usual, then group each date folder's
                                 games into per-opponent "set" subfolders, e.g.
                                 Ranked/2026-05-02/MyTag (JNOD#789) Falcon vs
