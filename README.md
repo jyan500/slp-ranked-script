@@ -13,7 +13,9 @@ and npm installed (confirmed on at least 6.14.8)
 Copy the constants.example.js into a new `constants.js` file, and update the following three variables:
 
 `SOURCE_DIR` = "Path to your slippi replays grouped by month";
+
 `DEST_DIR` = "Path where the ranked games will go (defaults to the SOURCE_DIR under a directory named "Ranked" (i.e C:\Your Slippi Replays\Ranked))
+
 `MY_CONNECT_CODES` = [Your connect code 1, Your connect code 2, ...] // Can enter multiple if you play on more than one account
 
 # Usage
