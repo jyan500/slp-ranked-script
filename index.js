@@ -12,7 +12,13 @@
 //   node index.js --sets          Copy as usual, then group each date folder's
 //                                 games into per-opponent "set" subfolders, e.g.
 //                                 Ranked/2026-05-02/MyTag (JNOD#789) Falcon vs
-//                                 Rival (WXYZ#456) Marth/.
+//                                 Rival (WXYZ#456) Marth/. Each set subfolder
+//                                 also gets a set.json with both players' name,
+//                                 code, and per-game character/costume list plus
+//                                 the set's date (MM/DD/YYYY).
+//   node index.js --real-name     In set.json, use your actual Slippi display
+//                                 name for player 0 instead of the configured
+//                                 default name (MY_DISPLAY_NAME, "J_Noodles").
 //
 // Flags can be combined with month filters, e.g. `node index.js 2026-05 --dry-run`.
 //
@@ -47,6 +53,12 @@ const SOURCE_DIR = constants.SOURCE_DIR;
 const DEST_DIR = constants.DEST_DIR ||
     (typeof SOURCE_DIR === "string" ? path.join(SOURCE_DIR, "Ranked") : undefined);
 const MY_CONNECT_CODES = constants.MY_CONNECT_CODES;
+// Default display name written for player 0 (you) in set.json. Overridable via
+// MY_DISPLAY_NAME in constants.js; falls back to the slippi display name if MY_DISPLAY_NAME is an empty string. The --real-name
+// flag bypasses this and uses the in-replay Slippi display name instead.
+const MY_DISPLAY_NAME = (typeof constants.MY_DISPLAY_NAME === "string" && constants.MY_DISPLAY_NAME.trim())
+    ? constants.MY_DISPLAY_NAME.trim()
+    : "";
 
 const missingConfig = [];
 if (typeof SOURCE_DIR !== "string" || !SOURCE_DIR.trim()) missingConfig.push("SOURCE_DIR");
@@ -70,6 +82,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const scanAll = args.includes("--all");
 const groupBySets = args.includes("--sets");
+const useRealName = args.includes("--real-name");
 const monthFilters = args.filter((a) => /^\d{4}-\d{2}$/.test(a));
 const dayFilters = args.filter((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
 
@@ -201,7 +214,8 @@ function sanitizeForFolder(name) {
 
 // Per-player identity + character for a game. connectCode/displayName come from
 // settings, falling back to metadata names; character is the short name (e.g.
-// "Falcon") from the external character id.
+// "Falcon") from the external character id; costumeIndex is the in-game costume
+// (characterColor) chosen for that character.
 function getPlayerInfo(game) {
     const settings = game.getSettings();
     const players = (settings && settings.players) || [];
@@ -221,8 +235,9 @@ function getPlayerInfo(game) {
                 character = "";
             }
         }
+        const costumeIndex = typeof p.characterColor === "number" ? p.characterColor : null;
         if (!connectCode && !displayName) continue;
-        infos.push({ connectCode, displayName, character });
+        infos.push({ connectCode, displayName, character, costumeIndex });
     }
     return infos;
 }
@@ -253,18 +268,64 @@ function charsForSide(games, side) {
     return seen.join("+");
 }
 
+// Ordered list of distinct { character, costumeIndex } a player used across a
+// set. Consecutive games on the same character+costume collapse into one entry;
+// every switch (including switching back) appends a new entry, so a player who
+// never switches yields a single-entry array.
+function characterEntriesForSide(games, side) {
+    const entries = [];
+    for (const g of games) {
+        const character = g[side].character || "";
+        const costumeIndex = g[side].costumeIndex ?? null;
+        if (entries.length === 0) {
+            entries.push({ character, costumeIndex });
+            continue;
+        }
+        const last = entries[entries.length - 1];
+        if (last.character !== character || last.costumeIndex !== costumeIndex) {
+            entries.push({ character, costumeIndex });
+        }
+    }
+    return entries;
+}
+
+// Convert a YYYY-MM-DD date-folder name into MM/DD/YYYY for the metadata file.
+function dateFolderToMMDDYYYY(folder) {
+    const m = folder.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[2]}/${m[3]}/${m[1]}` : folder;
+}
+
+// Build the per-set metadata object written as set.json: each player keyed by
+// 0 (me) and 1 (opponent) with name, code, and the ordered character list, plus
+// the set's play date as MM/DD/YYYY.
+function buildSetMetadata(games, folder) {
+    const playerEntry = (info, side, nameOverride) => ({
+        name: nameOverride !== undefined ? nameOverride : (info.displayName || ""),
+        code: info.connectCode || "",
+        characters: characterEntriesForSide(games, side),
+    });
+    // Player 0 (you): default to the configured name unless --real-name asks for
+    // the actual Slippi display name.
+    const myName = useRealName || MY_DISPLAY_NAME === "" ? (games[0].me.displayName || "") : MY_DISPLAY_NAME;
+    return {
+        0: playerEntry(games[0].me, "me", myName),
+        1: playerEntry(games[0].opponent, "opponent"),
+        date: dateFolderToMMDDYYYY(folder),
+    };
+}
+
 // Build the matchup folder name for a grouped set. Name + code come from the
 // first game (constant across the set); characters aggregate every game.
 function matchupLabel(games) {
     const first = games[0];
-    const side = (info, chars) => {
-        const name = sanitizeForFolder(info.displayName);
+    const side = (info, chars, is_me=true) => {
+        const name = sanitizeForFolder(is_me ? (useRealName || MY_DISPLAY_NAME === "" ? info.displayName : MY_DISPLAY_NAME) : info.displayName);
         const base = name ? `${name} (${info.connectCode})` : info.connectCode;
         const c = sanitizeForFolder(chars);
         return c ? `${base} ${c}` : base;
     };
-    const me = side(first.me, charsForSide(games, "me"));
-    const opp = side(first.opponent, charsForSide(games, "opponent"));
+    const me = side(first.me, charsForSide(games, "me"), true);
+    const opp = side(first.opponent, charsForSide(games, "opponent"), false);
     return sanitizeForFolder(`${me} vs ${opp}`);
 }
 
@@ -451,6 +512,26 @@ function groupSets(affectedDateFolders, pendingByFolder, stats) {
                     console.warn(`  ! Failed to move ${g.basename}: ${err.message}`);
                 }
             }
+
+            // Write/refresh the set's metadata file alongside its games.
+            const relMeta = `${folder}/${label}/set.json`;
+            if (dryRun) {
+                stats.jsonWritten++;
+                console.log(`would write -> ${relMeta}`);
+            } else {
+                try {
+                    fs.mkdirSync(destFolder, { recursive: true });
+                    fs.writeFileSync(
+                        path.join(destFolder, "set.json"),
+                        JSON.stringify(buildSetMetadata(set, folder), null, 2),
+                    );
+                    stats.jsonWritten++;
+                    console.log(`wrote -> ${relMeta}`);
+                } catch (err) {
+                    stats.errors++;
+                    console.warn(`  ! Failed to write ${relMeta}: ${err.message}`);
+                }
+            }
         }
     }
 }
@@ -475,6 +556,9 @@ function main() {
         console.log(`Scope:       ${currentMonthFolder()} (current month)`);
     }
     if (groupBySets) console.log("Sets:        ON (group date folders by opponent)");
+    if (groupBySets) {
+        console.log(`P0 name:     ${useRealName ? "real Slippi display name" : `"${MY_DISPLAY_NAME}" (default)`}`);
+    }
     if (dryRun) console.log("Mode:        DRY RUN (no files will be copied or moved)");
     console.log("");
 
@@ -483,7 +567,7 @@ function main() {
 
     const stats = {
         ranked: 0, unranked: 0, copied: 0, skipped: 0, errors: 0,
-        sets: 0, moved: 0, moveSkipped: 0, unclassified: 0,
+        sets: 0, moved: 0, moveSkipped: 0, unclassified: 0, jsonWritten: 0,
     };
 
     // Date folders this run wrote into, and would-copy entries per date folder
@@ -578,6 +662,7 @@ function main() {
         console.log(`${dryRun ? "Would move:" : "Moved into sets:"}      ${stats.moved}`);
         console.log(`Move skipped (exist): ${stats.moveSkipped}`);
         console.log(`Unclassified (flat):  ${stats.unclassified}`);
+        console.log(`${dryRun ? "Would write JSON:" : "Set JSON written:"}     ${stats.jsonWritten}`);
     }
     console.log(`Errors:               ${stats.errors}`);
 }

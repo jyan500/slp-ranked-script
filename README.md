@@ -18,6 +18,11 @@ Copy the constants.example.js into a new `constants.js` file, and update the fol
 
 `MY_CONNECT_CODES` = [Your connect code 1, Your connect code 2, ...] // Can enter multiple if you play on more than one account
 
+`MY_DISPLAY_NAME` = "Your name" // Optional. The name written for you (player 0)
+in each set's `set.json`. Defaults to a given user name defined in constants.js
+when omitted. Use `--real-name` (see Usage) to override this with your actual
+in-replay Slippi display name instead.
+
 # Usage
 
 `$ node index.js`                 Scan ONLY the current month's folder (YYYY-mm)
@@ -32,8 +37,15 @@ Copy the constants.example.js into a new `constants.js` file, and update the fol
 
 `$ node index.js --sets`          Copy as usual, then group each date folder's
                                 games into per-opponent "set" subfolders, e.g.
-                                Ranked/2026-05-02/MyTag (JNOD#789) Falcon vs
+                                Ranked/2026-05-02/MyTag (ABCD#789) Falcon vs
                                 Rival (WXYZ#456) Marth/.
+
+`$ node index.js --real-name`     In each set's `set.json`, use your actual
+                                Slippi display name for player 0 instead of the
+                                configured `MY_DISPLAY_NAME` (which defaults to a
+                                given user name defined in constants.js). Only
+                                affects `set.json`, so use it together with
+                                `--sets`.
 
 Flags can be combined with month filters, e.g. `node index.js 2026-05 --dry-run`.
 Re-runs are safe and incremental: existing date folders are reused, and files
