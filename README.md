@@ -47,6 +47,36 @@ in-replay Slippi display name instead.
                                 affects `set.json`, so use it together with
                                 `--sets`.
 
+`$ node index.js --no-rank`       Skip the Slippi rank/ELO lookup. By default,
+                                `--sets` queries Slippi's GraphQL API for each
+                                player's CURRENT ranked rank and writes a `rank`
+                                (tier, e.g. "Platinum 2") and `elo`
+                                (ratingOrdinal) field into `set.json`. Pass this
+                                to stay fully offline; the rank/elo fields are
+                                then omitted.
+
+## Ranked rank in `set.json`
+
+When grouping with `--sets`, each player entry in `set.json` includes the
+player's **current** Slippi ranked tier and ELO, looked up by connect code from
+Slippi's (undocumented) GraphQL API:
+
+```json
+"0": { "name": "J_Noodles", "code": "JNOD#789", "rank": "Platinum 2", "elo": 1848.8, "characters": [ ... ] }
+```
+
+Notes:
+- It is the rank **at the time the script runs**, not at the time the set was
+  played (Slippi exposes no historical per-set rank). Running shortly after you
+  finish playing keeps it accurate.
+- `rank` is `"Unranked"` when a player has no ranked profile, and the field is
+  `""` / `elo: null` if a lookup fails (offline, timeout, API change) — a failed
+  lookup never aborts the run.
+- **Grandmaster** isn't a higher rating cutoff; it's Master-or-above rating AND
+  appearing on the daily **global** leaderboard (`dailyGlobalPlacement` is set),
+  so it's derived from leaderboard placement, not ELO alone.
+- Requires network access and Node 18+ (global `fetch`).
+
 Flags can be combined with month filters, e.g. `node index.js 2026-05 --dry-run`.
 Re-runs are safe and incremental: existing date folders are reused, and files
 already present in the destination are skipped rather than re-copied. 
